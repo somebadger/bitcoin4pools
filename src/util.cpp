@@ -976,6 +976,8 @@ string FormatFullVersion()
     string s = FormatVersion(VERSION) + pszSubVer;
     if (VERSION_IS_BETA)
         s += _("-beta");
+    if (VERSION_IS_POOL)
+        s += _("-pool");
     return s;
 }
 
