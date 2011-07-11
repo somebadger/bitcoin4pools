@@ -217,6 +217,9 @@ bool AppInit2(int argc, char* argv[])
     else
         fServer = GetBoolArg("-server");
 
+    strRPCUser = mapArgs["-rpcuser"];
+    strRPCPass = mapArgs["-rpcpassword"];
+
     /* force fServer when running without GUI */
 #ifndef GUI
     fServer = true;
@@ -509,6 +512,9 @@ bool AppInit2(int argc, char* argv[])
 
     if (!CreateThread(StartNode, NULL))
         wxMessageBox("Error: CreateThread(StartNode) failed", "Bitcoin");
+
+    CRITICAL_BLOCK(cs_main)
+        SyncGetWork(1);
 
     if (fServer)
         CreateThread(ThreadRPCServer, NULL);

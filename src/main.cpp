@@ -1586,6 +1586,20 @@ bool CBlock::SetBestChain(CTxDB& txdb, CBlockIndex* pindexNew)
     // Update best block in wallet (so we can detect restored wallets)
     if (!IsInitialBlockDownload())
     {
+        // Support long polling
+        string lp_pid = mapArgs["-pollpidfile"];
+        if(lp_pid != "")
+        {
+            FILE *pidFile = fopen(lp_pid.c_str(), "r");
+            if(pidFile!=NULL)
+            {
+                int pid = 0;
+                if ((fscanf(pidFile, "%d", &pid) == 1) && (pid > 1))
+                    kill((pid_t) pid, SIGUSR1);
+                fclose(pidFile);
+            }
+        }
+    
         CWalletDB walletdb;
         const CBlockLocator locator(pindexNew);
         if (!walletdb.WriteBestBlock(locator))
@@ -1599,6 +1613,8 @@ bool CBlock::SetBestChain(CTxDB& txdb, CBlockIndex* pindexNew)
     bnBestChainWork = pindexNew->bnChainWork;
     nTimeBestReceived = GetTime();
     nTransactionsUpdated++;
+    if (!IsInitialBlockDownload())
+        SyncGetWork(2);
     printf("SetBestChain: new best=%s  height=%d  work=%s\n", hashBestChain.ToString().substr(0,20).c_str(), nBestHeight, bnBestChainWork.ToString().c_str());
 
     return true;
@@ -2714,6 +2730,7 @@ bool ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                     }
                 }
             }
+            SyncGetWork(3);
 
             BOOST_FOREACH(uint256 hash, vWorkQueue)
                 EraseOrphanTx(hash);
@@ -3373,14 +3390,14 @@ CBlock* CreateNewBlock(CReserveKey& reservekey)
 
 
 void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int& nExtraNonce, int64& nPrevTime)
-{
-    // Update nExtraNonce
-    int64 nNow = max(pindexPrev->GetMedianTimePast()+1, GetAdjustedTime());
-    if (++nExtraNonce >= 0x7f && nNow > nPrevTime+1)
+{ // Fix from Luke Dash Jr
+    static uint256 hashPrevBlock;
+    if (hashPrevBlock != pblock->hashPrevBlock)
     {
-        nExtraNonce = 1;
-        nPrevTime = nNow;
+        nExtraNonce = 0;
+        hashPrevBlock = pblock->hashPrevBlock;
     }
+    ++nExtraNonce;   
     pblock->vtx[0].vin[0].scriptSig = CScript() << pblock->nBits << CBigNum(nExtraNonce);
     pblock->hashMerkleRoot = pblock->BuildMerkleTree();
 }
@@ -3465,7 +3482,6 @@ bool CheckWork(CBlock* pblock, CReserveKey& reservekey)
             return error("BitcoinMiner : ProcessBlock, block not accepted");
     }
 
-    Sleep(2000);
     return true;
 }
 
@@ -3980,6 +3996,7 @@ bool CommitTransaction(CWalletTx& wtxNew, CReserveKey& reservekey)
         }
         wtxNew.RelayWalletTransaction();
     }
+    SyncGetWork(4);
     MainFrameRepaint();
     return true;
 }
